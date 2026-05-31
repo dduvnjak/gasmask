@@ -71,5 +71,25 @@ jobs:
     - name: Resolve package dependencies
       run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
 
+    - name: Runner info
+      run: echo "arch=$(uname -m) os=$(sw_vers -productVersion)"
+
     - name: Test
       run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS,arch=$(uname -m)" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+    - name: Diagnostics
+      if: failure()
+      run: |
+        XCRESULT=$(find ~/Library/Developer/Xcode/DerivedData -name "*.xcresult" -type d | head -1)
+        if [ -n "$XCRESULT" ]; then
+          xcresulttool get --path "$XCRESULT" --format json 2>/dev/null | python3 -c "
+        import sys, json
+        data = json.load(sys.stdin)
+        print(json.dumps(data, indent=2)[:10000])
+        " 2>/dev/null || echo "xcresulttool failed"
+          xcresulttool get diagnostics --path "$XCRESULT" 2>/dev/null | head -200 || true
+        fi
+        echo "--- system.log ---"
+        log show --predicate 'process == "Gas Mask" OR process == "xctest"' --last 2m 2>/dev/null | tail -50 || true
+        echo "--- crash reports ---"
+        find ~/Library/Logs/DiagnosticReports -name "*Gas*" -newer /tmp -type f 2>/dev/null | while read f; do head -50 "$f"; done || true
