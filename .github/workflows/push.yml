@@ -72,4 +72,4 @@ jobs:
       run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
 
     - name: Test
-      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS,arch=$(uname -m)" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
