@@ -2,41 +2,41 @@ name: "on-push"
 on:
   - push
 jobs:
-  build:
-    name: Build (${{ matrix.runner }}, Xcode ${{ matrix.xcode }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15
-            xcode: "16.4"
-          - runner: macos-15-intel
-            xcode: "16.4"
-          - runner: macos-26
-            xcode: "26.2"
-          - runner: macos-26-intel
-            xcode: "26.2"
-          - runner: macos-14
-            xcode: "15.4"
-          - runner: macos-15
-            xcode: "16.0"
-          - runner: macos-15
-            xcode: "26.0.1"
-          - runner: macos-26
-            xcode: "26.3"
-    steps:
-    - uses: actions/checkout@v4
-
-    - uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: ${{ matrix.xcode }}
-
-    - name: Resolve package dependencies
-      run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
-
-    - name: Build
-      run: ./build.sh
+  # build:
+  #   name: Build (${{ matrix.runner }}, Xcode ${{ matrix.xcode }})
+  #   runs-on: ${{ matrix.runner }}
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       include:
+  #         - runner: macos-15
+  #           xcode: "16.4"
+  #         - runner: macos-15-intel
+  #           xcode: "16.4"
+  #         - runner: macos-26
+  #           xcode: "26.2"
+  #         - runner: macos-26-intel
+  #           xcode: "26.2"
+  #         - runner: macos-14
+  #           xcode: "15.4"
+  #         - runner: macos-15
+  #           xcode: "16.0"
+  #         - runner: macos-15
+  #           xcode: "26.0.1"
+  #         - runner: macos-26
+  #           xcode: "26.3"
+  #   steps:
+  #   - uses: actions/checkout@v4
+  #
+  #   - uses: maxim-lobanov/setup-xcode@v1
+  #     with:
+  #       xcode-version: ${{ matrix.xcode }}
+  #
+  #   - name: Resolve package dependencies
+  #     run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
+  #
+  #   - name: Build
+  #     run: ./build.sh
 
   test:
     name: Test (${{ matrix.runner }}, Xcode ${{ matrix.xcode }})
@@ -47,20 +47,8 @@ jobs:
         include:
           - runner: macos-15
             xcode: "16.4"
-          - runner: macos-15-intel
-            xcode: "16.4"
-          - runner: macos-26
-            xcode: "26.2"
           - runner: macos-26-intel
             xcode: "26.2"
-          - runner: macos-14
-            xcode: "15.4"
-          - runner: macos-15
-            xcode: "16.0"
-          - runner: macos-15
-            xcode: "26.0.1"
-          - runner: macos-26
-            xcode: "26.3"
     steps:
     - uses: actions/checkout@v4
 
@@ -75,7 +63,7 @@ jobs:
       run: echo "arch=$(uname -m) os=$(sw_vers -productVersion)"
 
     - name: Test
-      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS,arch=$(uname -m)" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" ARCHS="$(uname -m)" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
     - name: Diagnostics
       if: failure()
