@@ -90,7 +90,7 @@
 		</dict>
 	</array>
 	<key>SUEnableAutomaticChecks</key>
-	<string>YES</string>
+	<string>NO</string>
 	<key>SUFeedURL</key>
 	<string>http://gmask.clockwise.ee/check_update/</string>
 	<key>SUPublicDSAKeyFile</key>

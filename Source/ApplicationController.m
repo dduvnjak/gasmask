@@ -66,7 +66,7 @@ static ApplicationController *sharedInstance = nil;
 		BOOL isTesting = NSClassFromString(@"XCTestCase") != nil;
 		if (!isTesting) {
 			_updaterController = [[SPUStandardUpdaterController alloc]
-								  initWithStartingUpdater:YES
+								  initWithStartingUpdater:NO
 								  updaterDelegate:nil
 								  userDriverDelegate:nil];
 		}
