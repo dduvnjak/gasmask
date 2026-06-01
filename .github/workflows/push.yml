@@ -60,29 +60,38 @@ jobs:
     - name: Build for testing
       run: xcodebuild build-for-testing -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
 
-    - name: Diagnose test host
+    - name: Test with system log capture
       run: |
-        APP=$(find ~/Library/Developer/Xcode/DerivedData -name "Gas Mask.app" -path "*/Debug/*" | head -1)
-        echo "App path: $APP"
-        echo "--- Binary architectures ---"
-        file "$APP/Contents/MacOS/Gas Mask"
-        lipo -info "$APP/Contents/MacOS/Gas Mask"
-        echo "--- Test bundle ---"
-        ls -la "$APP/Contents/PlugIns/"
-        file "$APP/Contents/PlugIns/Gas Mask Tests.xctest/Contents/MacOS/Gas Mask Tests"
-        echo "--- Try launching app (5s timeout) ---"
-        "$APP/Contents/MacOS/Gas Mask" &
-        APP_PID=$!
-        sleep 5
-        if kill -0 $APP_PID 2>/dev/null; then
-          echo "App is still running (PID $APP_PID) - GOOD"
-          kill $APP_PID
-        else
-          wait $APP_PID 2>/dev/null
-          echo "App exited with code $? within 5 seconds - BAD"
-        fi
-        echo "--- Recent crash reports ---"
-        ls -lt ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -5 || echo "No crash reports"
+        log stream --predicate 'process == "Gas Mask" OR process == "xctest" OR process == "XCTRunner" OR (subsystem == "com.apple.xctest")' --style compact > /tmp/test_syslog.txt 2>&1 &
+        LOG_PID=$!
+        sleep 1
 
-    - name: Test
-      run: xcodebuild test-without-building -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+        set +e
+        xcodebuild test-without-building \
+          -project "Gas Mask.xcodeproj" \
+          -scheme "Gas Mask" \
+          -destination "platform=macOS" \
+          -resultBundlePath /tmp/TestResults.xcresult \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+        TEST_EXIT=$?
+        set -e
+
+        kill $LOG_PID 2>/dev/null || true
+        sleep 1
+
+        echo "=== System log during test ==="
+        cat /tmp/test_syslog.txt | head -200
+
+        echo ""
+        echo "=== xcresult diagnostics ==="
+        if [ -d /tmp/TestResults.xcresult ]; then
+          xcresulttool get --path /tmp/TestResults.xcresult 2>/dev/null | head -100 || echo "xcresulttool failed"
+        else
+          echo "No xcresult bundle found"
+        fi
+
+        echo ""
+        echo "=== Crash reports (last 5 min) ==="
+        find ~/Library/Logs/DiagnosticReports -name "*Gas*" -mmin -5 -exec cat {} \; 2>/dev/null | head -100 || echo "None"
+
+        exit $TEST_EXIT
