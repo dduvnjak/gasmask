@@ -41,27 +41,12 @@ jobs:
   test:
     name: Test (${{ matrix.runner }}, Xcode ${{ matrix.xcode }})
     runs-on: ${{ matrix.runner }}
-    continue-on-error: ${{ contains(matrix.runner, 'intel') && contains(matrix.xcode, '26') }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            xcode: "16.4"
-          - runner: macos-15-intel
-            xcode: "16.4"
-          - runner: macos-26
-            xcode: "26.2"
           - runner: macos-26-intel
             xcode: "26.2"
-          - runner: macos-14
-            xcode: "15.4"
-          - runner: macos-15
-            xcode: "16.0"
-          - runner: macos-15
-            xcode: "26.0.1"
-          - runner: macos-26
-            xcode: "26.3"
     steps:
     - uses: actions/checkout@v4
 
@@ -72,5 +57,13 @@ jobs:
     - name: Resolve package dependencies
       run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
 
+    - name: Hardware info
+      run: |
+        echo "uname -m: $(uname -m)"
+        echo "uname -p: $(uname -p)"
+        sysctl hw.optional.arm64 2>/dev/null || echo "hw.optional.arm64: not available"
+        sysctl machdep.cpu.brand_string 2>/dev/null || echo "cpu brand: not available"
+        echo "Rosetta: $(sysctl -n sysctl.proc_translated 2>/dev/null || echo 'unknown')"
+
     - name: Test
-      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
