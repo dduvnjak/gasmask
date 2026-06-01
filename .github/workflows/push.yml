@@ -47,6 +47,8 @@ jobs:
         include:
           - runner: macos-26-intel
             xcode: "26.2"
+          - runner: macos-26-intel
+            xcode: "26.3"
     steps:
     - uses: actions/checkout@v4
 
@@ -57,41 +59,26 @@ jobs:
     - name: Resolve package dependencies
       run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
 
-    - name: Build for testing
-      run: xcodebuild build-for-testing -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+    - name: Available Xcode versions
+      run: ls -d /Applications/Xcode*.app 2>/dev/null || echo "No Xcode apps found"
 
-    - name: Test with system log capture
+    - name: Test
       run: |
-        log stream --predicate 'process == "Gas Mask" OR process == "xctest" OR process == "XCTRunner" OR (subsystem == "com.apple.xctest")' --style compact > /tmp/test_syslog.txt 2>&1 &
-        LOG_PID=$!
-        sleep 1
-
         set +e
-        xcodebuild test-without-building \
+        xcodebuild test \
           -project "Gas Mask.xcodeproj" \
           -scheme "Gas Mask" \
-          -destination "platform=macOS" \
-          -resultBundlePath /tmp/TestResults.xcresult \
+          -destination "platform=macOS,arch=x86_64" \
+          -disable-concurrent-testing \
           CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
         TEST_EXIT=$?
         set -e
 
-        kill $LOG_PID 2>/dev/null || true
-        sleep 1
-
-        echo "=== System log during test ==="
-        cat /tmp/test_syslog.txt | head -200
-
-        echo ""
-        echo "=== xcresult diagnostics ==="
-        if [ -d /tmp/TestResults.xcresult ]; then
-          xcresulttool get --path /tmp/TestResults.xcresult 2>/dev/null | head -100 || echo "xcresulttool failed"
-        else
-          echo "No xcresult bundle found"
+        if [ $TEST_EXIT -ne 0 ]; then
+          echo ""
+          echo "=== Test failed (exit $TEST_EXIT), capturing diagnostics ==="
+          echo "--- XCTest daemon processes ---"
+          ps aux | grep -i "testmanager\|xctest\|Gas.Mask" | grep -v grep || echo "None found"
         fi
-
-        echo ""
-        echo "=== Crash reports (last 5 min) ==="
-        find ~/Library/Logs/DiagnosticReports -name "*Gas*" -mmin -5 -exec cat {} \; 2>/dev/null | head -100 || echo "None"
 
         exit $TEST_EXIT
