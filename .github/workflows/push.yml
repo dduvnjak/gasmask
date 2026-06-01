@@ -57,13 +57,32 @@ jobs:
     - name: Resolve package dependencies
       run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
 
-    - name: Hardware info
+    - name: Build for testing
+      run: xcodebuild build-for-testing -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+    - name: Diagnose test host
       run: |
-        echo "uname -m: $(uname -m)"
-        echo "uname -p: $(uname -p)"
-        sysctl hw.optional.arm64 2>/dev/null || echo "hw.optional.arm64: not available"
-        sysctl machdep.cpu.brand_string 2>/dev/null || echo "cpu brand: not available"
-        echo "Rosetta: $(sysctl -n sysctl.proc_translated 2>/dev/null || echo 'unknown')"
+        APP=$(find ~/Library/Developer/Xcode/DerivedData -name "Gas Mask.app" -path "*/Debug/*" | head -1)
+        echo "App path: $APP"
+        echo "--- Binary architectures ---"
+        file "$APP/Contents/MacOS/Gas Mask"
+        lipo -info "$APP/Contents/MacOS/Gas Mask"
+        echo "--- Test bundle ---"
+        ls -la "$APP/Contents/PlugIns/"
+        file "$APP/Contents/PlugIns/Gas Mask Tests.xctest/Contents/MacOS/Gas Mask Tests"
+        echo "--- Try launching app (5s timeout) ---"
+        "$APP/Contents/MacOS/Gas Mask" &
+        APP_PID=$!
+        sleep 5
+        if kill -0 $APP_PID 2>/dev/null; then
+          echo "App is still running (PID $APP_PID) - GOOD"
+          kill $APP_PID
+        else
+          wait $APP_PID 2>/dev/null
+          echo "App exited with code $? within 5 seconds - BAD"
+        fi
+        echo "--- Recent crash reports ---"
+        ls -lt ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -5 || echo "No crash reports"
 
     - name: Test
-      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" ONLY_ACTIVE_ARCH=NO CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+      run: xcodebuild test-without-building -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
