@@ -47,8 +47,6 @@ jobs:
         include:
           - runner: macos-26-intel
             xcode: "26.2"
-          - runner: macos-26-intel
-            xcode: "26.3"
     steps:
     - uses: actions/checkout@v4
 
@@ -59,26 +57,36 @@ jobs:
     - name: Resolve package dependencies
       run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
 
-    - name: Available Xcode versions
-      run: ls -d /Applications/Xcode*.app 2>/dev/null || echo "No Xcode apps found"
-
     - name: Test
       run: |
-        set +e
         xcodebuild test \
           -project "Gas Mask.xcodeproj" \
           -scheme "Gas Mask" \
           -destination "platform=macOS,arch=x86_64" \
           -disable-concurrent-testing \
+          -resultBundlePath /tmp/TestResults.xcresult \
           CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
-        TEST_EXIT=$?
-        set -e
 
-        if [ $TEST_EXIT -ne 0 ]; then
-          echo ""
-          echo "=== Test failed (exit $TEST_EXIT), capturing diagnostics ==="
-          echo "--- XCTest daemon processes ---"
-          ps aux | grep -i "testmanager\|xctest\|Gas.Mask" | grep -v grep || echo "None found"
+    - name: Test result summary
+      if: always()
+      run: |
+        if [ -d /tmp/TestResults.xcresult ]; then
+          xcresulttool get --path /tmp/TestResults.xcresult --format json 2>/dev/null | python3 -c "
+        import json, sys
+        data = json.load(sys.stdin)
+        def walk(node, depth=0):
+            if isinstance(node, dict):
+                if node.get('_type', {}).get('_name') == 'ActionTestSummary':
+                    status = node.get('testStatus', {}).get('_value', '?')
+                    name = node.get('name', {}).get('_value', '?')
+                    print(f'  {status}: {name}')
+                for v in node.values():
+                    walk(v, depth+1)
+            elif isinstance(node, list):
+                for item in node:
+                    walk(item, depth+1)
+        walk(data)
+        " 2>/dev/null || echo "Could not parse xcresult"
+        else
+          echo "No xcresult bundle"
         fi
-
-        exit $TEST_EXIT
