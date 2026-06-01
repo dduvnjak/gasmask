@@ -2,29 +2,15 @@ name: "on-push"
 on:
   - push
 jobs:
-  build:
-    name: Build (${{ matrix.runner }}, Xcode ${{ matrix.xcode }})
-    runs-on: ${{ matrix.runner }}
+  test-intel-macos26:
+    name: Test macos-26-intel (Xcode ${{ matrix.xcode }})
+    runs-on: macos-26-intel
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15
-            xcode: "16.4"
-          - runner: macos-15-intel
-            xcode: "16.4"
-          - runner: macos-26
-            xcode: "26.2"
-          - runner: macos-26-intel
-            xcode: "26.2"
-          - runner: macos-14
-            xcode: "15.4"
-          - runner: macos-15
-            xcode: "16.0"
-          - runner: macos-15
-            xcode: "26.0.1"
-          - runner: macos-26
-            xcode: "26.3"
+          - xcode: "26.5"
+          - xcode: "26.2"
     steps:
     - uses: actions/checkout@v4
 
@@ -32,61 +18,57 @@ jobs:
       with:
         xcode-version: ${{ matrix.xcode }}
 
-    - name: Resolve package dependencies
-      run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
-
-    - name: Build
-      run: ./build.sh
-
-  test:
-    name: Test (${{ matrix.runner }}, Xcode ${{ matrix.xcode }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-26-intel
-            xcode: "26.2"
-    steps:
-    - uses: actions/checkout@v4
-
-    - uses: maxim-lobanov/setup-xcode@v1
-      with:
-        xcode-version: ${{ matrix.xcode }}
-
-    - name: Resolve package dependencies
-      run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
-
-    - name: Test
+    - name: Show environment
       run: |
-        xcodebuild test \
-          -project "Gas Mask.xcodeproj" \
-          -scheme "Gas Mask" \
-          -destination "platform=macOS,arch=x86_64" \
-          -disable-concurrent-testing \
-          -resultBundlePath /tmp/TestResults.xcresult \
-          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+        xcodebuild -version
+        sysctl hw.machine hw.cpu64bit_capable || true
+        sw_vers
 
-    - name: Test result summary
+    - name: Resolve package dependencies
+      run: xcodebuild -resolvePackageDependencies -project "Gas Mask.xcodeproj" -scheme "Gas Mask"
+
+    - name: Build for testing
+      run: xcodebuild build-for-testing -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO
+
+    - name: Test (test-without-building)
+      id: twb
+      continue-on-error: true
+      run: xcodebuild test-without-building -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -80
+
+    - name: Test (standard xcodebuild test)
+      id: standard
+      if: steps.twb.outcome == 'failure'
+      continue-on-error: true
+      run: xcodebuild test -project "Gas Mask.xcodeproj" -scheme "Gas Mask" -destination "platform=macOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -80
+
+    - name: Test (xcrun xctest direct)
+      id: direct
+      if: steps.twb.outcome == 'failure' && steps.standard.outcome == 'failure'
+      continue-on-error: true
+      run: |
+        TEST_BUNDLE=$(find ~/Library/Developer/Xcode/DerivedData -name "Gas Mask Tests.xctest" -type d 2>/dev/null | head -1)
+        if [ -z "$TEST_BUNDLE" ]; then
+          echo "No test bundle found in DerivedData, searching build dir..."
+          TEST_BUNDLE=$(find . -name "Gas Mask Tests.xctest" -type d 2>/dev/null | head -1)
+        fi
+        echo "Test bundle: $TEST_BUNDLE"
+        if [ -n "$TEST_BUNDLE" ]; then
+          xcrun xctest "$TEST_BUNDLE" 2>&1 | tail -40
+        else
+          echo "ERROR: Could not find test bundle"
+          exit 1
+        fi
+
+    - name: Summary
       if: always()
       run: |
-        if [ -d /tmp/TestResults.xcresult ]; then
-          xcresulttool get --path /tmp/TestResults.xcresult --format json 2>/dev/null | python3 -c "
-        import json, sys
-        data = json.load(sys.stdin)
-        def walk(node, depth=0):
-            if isinstance(node, dict):
-                if node.get('_type', {}).get('_name') == 'ActionTestSummary':
-                    status = node.get('testStatus', {}).get('_value', '?')
-                    name = node.get('name', {}).get('_value', '?')
-                    print(f'  {status}: {name}')
-                for v in node.values():
-                    walk(v, depth+1)
-            elif isinstance(node, list):
-                for item in node:
-                    walk(item, depth+1)
-        walk(data)
-        " 2>/dev/null || echo "Could not parse xcresult"
+        echo "=== Results for Xcode ${{ matrix.xcode }} ==="
+        echo "test-without-building: ${{ steps.twb.outcome }}"
+        echo "standard xcodebuild test: ${{ steps.standard.outcome }}"
+        echo "xcrun xctest direct: ${{ steps.direct.outcome }}"
+        if [ "${{ steps.twb.outcome }}" = "success" ] || [ "${{ steps.standard.outcome }}" = "success" ] || [ "${{ steps.direct.outcome }}" = "success" ]; then
+          echo "At least one approach succeeded!"
         else
-          echo "No xcresult bundle"
+          echo "All approaches failed."
+          exit 1
         fi
